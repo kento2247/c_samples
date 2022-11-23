@@ -1,3 +1,6 @@
+// gcc -framework OpenGL -framework GLUT -DGL_SILENCE_DEPRECATION
+// print_adjust_tree.c
+
 #include <stdio.h>
 #include <stdlib.h>
 #ifndef __APPLE__     // OSがMacでない (= WindowsやLinux)
@@ -6,11 +9,10 @@
 #include <GLUT/glut.h>  // Macの場合のヘッダ
 #endif
 
-int WINDOW_WIDTH = 1600;  // ウィンドウの横幅
-int WINDOW_HEIGHT = 900;  // ウィンドウの高さ
+int WINDOW_WIDTH = 1280;  // ウィンドウの横幅
+int WINDOW_HEIGHT = 720;  // ウィンドウの高さ
 int max_depth = 0;
 char typed_key = 0;
-void debug();
 struct data {
   int value;
   struct data *parent;
@@ -22,6 +24,8 @@ struct data {
   int right_depth;
   int depth;
 };
+void debug();
+void print_tree(struct data *target, int x, int y);
 
 float pow2(float base) {
   float result = 1;
@@ -65,13 +69,7 @@ int get_fact(int num) {    //階乗を求める
 }
 
 int insert_leaf(struct data *root, struct data *p) {
-  int num = p->value;  // pはvalueだけ埋めて渡される
-  p->left = NULL;
-  p->right = NULL;
-  p->left_count = 0;
-  p->right_count = 0;
-  p->left_depth = 0;
-  p->right_depth = 0;
+  int num = p->value;          // pはvalueだけ埋めて渡される
   struct data *target = root;  //探索対象
   int depth = 1;
   while (1) {
@@ -149,9 +147,9 @@ int check_tree_state(struct data *root) {
         target_state = 1;  // AVLの場合
       else  // treeであれば、強制的に判定をtreeで終了する
         return 0;
-      if (target == root)
+      if (target == root) {
         return target_state;  // rootまで来た場合
-      else {
+      } else {
         if (target->value < target->parent->value)
           target->parent->left = NULL;  //親の左ノードだった場合
         else
@@ -221,6 +219,12 @@ void generate_tree(int n) {
       struct data *p;
       p = (struct data *)malloc(sizeof(struct data));
       p->value = array[i][j];
+      p->left = NULL;
+      p->right = NULL;
+      p->left_count = 0;
+      p->right_count = 0;
+      p->left_depth = 0;
+      p->right_depth = 0;
       tree_erase_flag = insert_leaf(&root, p);
       if (tree_erase_flag) break;
     }
@@ -228,9 +232,40 @@ void generate_tree(int n) {
       printf(" > erased");  // debug
       continue;
     } else {
-      //ここで描画
+      glClear(GL_COLOR_BUFFER_BIT);
+      max_depth = max(root.left_depth, root.right_depth);
+      int need_height = (2 * (max_depth + 1) - 1) * 24;
+      int height_margin = (WINDOW_HEIGHT - need_height) / 2;  //マージン
+      glColor3d(0.0, 0.0, 0.0);
+      glLineWidth(1.0);
+      print_tree(&root, WINDOW_WIDTH / 2, (WINDOW_HEIGHT - height_margin));
+      glRasterPos2f(WINDOW_WIDTH / 40, WINDOW_HEIGHT / 20 * 19);
+      glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, 40);
+      glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, 32);
+      for (int c = 0; c < n; c++) {
+        char ic = 48 + array[i][c];
+        glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, ic);
+        glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, 32);
+      }
+      glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, 41);
       int tree_state = check_tree_state(&root);  //木を評価
-      printf("...state %d", tree_state);         // debug
+      char tree_state_name_1[12] = {'t', 'r', 'e', 'e', ' ', 's',
+                                    't', 'a', 't', 'e', '=', 48 + tree_state};
+
+      char tree_state_name_2[26] = {'(', '2', '=', 'p', 'e', 'r', 'f', 'e', 'c',
+                                    't', ',', '1', '=', 'A', 'V', 'L', ',', '0',
+                                    '=', 'n', 'o', 'r', 'm', 'a', 'l', ')'};
+      glRasterPos2f(WINDOW_WIDTH / 40, WINDOW_HEIGHT / 20 * 18);
+      for (int c = 0; c < 12; c++) {
+        glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, tree_state_name_1[c]);
+      }
+      glRasterPos2f(WINDOW_WIDTH / 40, WINDOW_HEIGHT / 20 * 17);
+      for (int c = 0; c < 26; c++) {
+        glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, tree_state_name_2[c]);
+      }
+      glFlush();
+      //ここで描画
+      printf("...state %d", tree_state);  // debug
       tree_height[0][tree_count] =
           max(root.left_depth, root.right_depth);  //木の高さを記録
       tree_total_dep += tree_height[0][tree_count];
@@ -247,6 +282,13 @@ void generate_tree(int n) {
         perfect_count += 1;
       }
       tree_count += 1;
+
+      //以下デバッグ用
+      if (tree_state != 2) continue;
+      int d = 0;
+      scanf("%d", &d);
+      if (d == 0) break;
+      //ここまで
     }
   }
   float tree_ave = tree_total_dep / (float)tree_count;
@@ -272,10 +314,11 @@ void print_tree(struct data *target, int x, int y) {
   glRasterPos2f(x - str_width / 2, y + 3);
   glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, 48 + num);
   if (target->left != NULL) {
-    int shift_x = (pow2(max_depth - target->depth + 1) - 1) * 5;
+    int shift_x =
+        (pow2(max_depth - target->depth + 1) - 1) * 5;  //枝の長さを定義
     glBegin(GL_LINES);
-    glVertex2d(x, y - 3);
-    glVertex2d(x - shift_x, y - 21);
+    glVertex2d(x, y - 3);             //数字の上下3pxは空ける
+    glVertex2d(x - shift_x, y - 21);  //数字の上下3pxは空ける
     glEnd();
     print_tree(target->left, x - shift_x, y - 48);
   }
@@ -308,11 +351,17 @@ void init() {
 void display() { print_home(); }
 
 void keybord(unsigned char key, int x, int y) {
-  printf("\ntype->%hhu\n", key);
+  // printf("\ntype->%hhu\n", key);
   typed_key = key;
-  if (key == 50) glutPostRedisplay();  // 2を入力で画面更新
-  if (key == 49) debug();              // 1を入力で木を描画
-  if (key == 48) exit(0);              // 0入力でプログラム終了
+  if (key == 51) glutPostRedisplay();  // 3を入力でホーム画面
+  if (key == 50) {
+    printf("\ntype tree depth num : ");
+    int d = 0;
+    scanf("%d", &d);
+    generate_tree(d);  // 2を入力でgenerate tree
+  }
+  if (key == 49) debug();  // 1を入力で木を描画
+  if (key == 48) exit(0);  // 0入力でプログラム終了
 }
 
 void reshape(int width, int height) {
@@ -326,11 +375,11 @@ void reshape(int width, int height) {
   WINDOW_HEIGHT = height;
 }
 
+#define length 8
 void debug() {
-  int length = 8;
   // int arr[4] = {3, 1, 2, 4};  // length_size
   // int arr[5] = {3, 1, 2, 4, 5};           // length_size
-  int arr[8] = {3, 1, 2, 4, 5, 6, 7, 8};  // length_size
+  int arr[length] = {3, 1, 2, 4, 5, 6, 7, 8};  // length_size
   struct data root;
   root.value = arr[0];
   root.depth = 0;
@@ -345,6 +394,12 @@ void debug() {
     struct data *p;
     p = (struct data *)malloc(sizeof(struct data));
     p->value = arr[i];
+    p->left = NULL;
+    p->right = NULL;
+    p->left_count = 0;
+    p->right_count = 0;
+    p->left_depth = 0;
+    p->right_depth = 0;
     insert_tree_flag = insert_leaf(&root, p);  //木の形状を保存
     if (insert_tree_flag) break;
   }
@@ -356,8 +411,18 @@ void debug() {
   int need_height = (2 * (max_depth + 1) - 1) * 24;
   int height_margin = (WINDOW_HEIGHT - need_height) / 2;  //マージン
   glColor3d(0.0, 0.0, 0.0);
-  glLineWidth(2.0);
+  glLineWidth(1.0);
   print_tree(&root, WINDOW_WIDTH / 2, (WINDOW_HEIGHT - height_margin));
+
+  glRasterPos2f(WINDOW_WIDTH / 20, WINDOW_HEIGHT / 20 * 19);
+  glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, 40);
+  glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, 32);
+  for (int i = 0; i < length; i++) {
+    char ic = 48 + arr[i];
+    glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, ic);
+    glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, 32);
+  }
+  glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, 41);
   glFlush();
 
   int tree_state = check_tree_state(&root);
@@ -369,7 +434,10 @@ void debug() {
 }
 
 int main(int argc, char **argv) {
-  printf("keybord\n 1->reload display\n 0->exit\n");
+  //以下デバッグ
+  printf(
+      "keybord\n 3->back to home\n 2->generate tree\n 1->print debug tree\n "
+      "0->exit\n");
   // GLUTの初期化
   glutInit(&argc, argv);
   // ウィンドウのサイズを設定
@@ -387,8 +455,3 @@ int main(int argc, char **argv) {
   // 描画ループの開始
   glutMainLoop();
 }
-
-// int main() {
-//   // debug();
-//   generate_tree(4);
-// }
